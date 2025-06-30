@@ -275,7 +275,9 @@ export default function AdminPanel() {
               <CardContent>
                 <h2 className="text-xl font-semibold mb-2">👤 Member Management</h2>
                 <input type="text" placeholder="Wallet Address" value={memberAddress} onChange={(e) => setMemberAddress(e.target.value)} className="text-black px-2 py-1 mr-2" />
-                <Button variant="destructive" onClick={removeMember}>Remove Member</Button>
+                <Button variant="outline" className="text-red-600 border-red-600 hover:bg-red-100" onClick={removeMember}>
+                  Remove Member
+                </Button>
               </CardContent>
             </Card>
           </>
