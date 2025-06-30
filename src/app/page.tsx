@@ -20,7 +20,7 @@ import erc20Abi from "@/app/abi/erc20.json";
 
 const MEMBERSHIP_ADDRESS = process.env.NEXT_PUBLIC_MEMBERSHIP_ADDRESS as `0x${string}`;
 const USDT_ADDRESS = process.env.NEXT_PUBLIC_USDT_ADDRESS as `0x${string}`;
-const MEMBERSHIP_FEE = parseUnits("230", 18);
+const MEMBERSHIP_FEE = parseUnits("230", 18); // 230 USDT
 
 export default function Home() {
   const { address, isConnected } = useAccount();
@@ -41,33 +41,37 @@ export default function Home() {
     query: { enabled: !!address },
   });
 
-  const { data: isPaused } = useReadContract({
+  const { data: isPausedRaw } = useReadContract({
     address: MEMBERSHIP_ADDRESS,
     abi: membershipAbi,
     functionName: "paused",
   });
+  const isPaused = isPausedRaw as boolean;
 
-  const { data: currentFee } = useReadContract({
+  const { data: currentFeeRaw } = useReadContract({
     address: MEMBERSHIP_ADDRESS,
     abi: membershipAbi,
     functionName: "membershipFeeUSDT",
   });
+  const currentFee = currentFeeRaw as bigint;
 
-  const { data: allowance } = useReadContract({
+  const { data: allowanceRaw } = useReadContract({
     address: USDT_ADDRESS,
     abi: erc20Abi,
     functionName: "allowance",
     args: [address, MEMBERSHIP_ADDRESS],
     query: { enabled: !!address },
   });
+  const allowance = allowanceRaw as bigint;
 
-  const { data: usdtBalance } = useReadContract({
+  const { data: usdtBalanceRaw } = useReadContract({
     address: USDT_ADDRESS,
     abi: erc20Abi,
     functionName: "balanceOf",
     args: [address],
     query: { enabled: !!address },
   });
+  const usdtBalance = usdtBalanceRaw as bigint;
 
   const { writeContractAsync: approveAsync, isPending: isApproving } = useWriteContract();
   const { writeContractAsync: joinAsync, isPending: isJoining } = useWriteContract();
@@ -79,12 +83,12 @@ export default function Home() {
     setError("");
     if (!isConnected || !address) return setError("Connect your wallet first.");
     if (isPaused) return setError("Membership is paused. Try again later.");
-    if (!currentFee || currentFee.toString() !== MEMBERSHIP_FEE.toString())
-      return setError("Membership fee changed.");
+    if (!currentFee || currentFee !== MEMBERSHIP_FEE) return setError("Membership fee changed.");
     if (!usdtBalance || usdtBalance < MEMBERSHIP_FEE) return setError("Insufficient USDT.");
 
     try {
       setLoading(true);
+
       if (!allowance || allowance < MEMBERSHIP_FEE) {
         const tx = await approveAsync({
           address: USDT_ADDRESS,
@@ -94,6 +98,7 @@ export default function Home() {
         });
         setApproveTxHash(tx);
       }
+
       const joinTx = await joinAsync({
         address: MEMBERSHIP_ADDRESS,
         abi: membershipAbi,
@@ -119,7 +124,7 @@ export default function Home() {
   const handleConnect = async () => {
     try {
       await connectAsync({ connector: injected() });
-    } catch (err) {
+    } catch {
       setError("Wallet connection failed.");
     }
   };
@@ -159,7 +164,14 @@ export default function Home() {
         <div className="flex justify-center gap-4">
           <Button
             onClick={handleJoin}
-            disabled={loading || isApproving || isJoining || isApprovingConfirmed || isJoiningConfirmed || isPaused}
+            disabled={
+              loading ||
+              isApproving ||
+              isJoining ||
+              isApprovingConfirmed ||
+              isJoiningConfirmed ||
+              Boolean(isPaused)
+            }
             className="px-6 py-3 text-lg"
           >
             {loading || isApproving || isJoining || isApprovingConfirmed || isJoiningConfirmed
@@ -198,7 +210,9 @@ export default function Home() {
             livePools.map((pool, i) => (
               <div key={i} className="border border-gray-700 p-6 rounded-xl">
                 <h3 className="text-lg font-bold mb-2">{pool.name}</h3>
-                <p>{pool.fee}% · {Math.floor(pool.duration / 86400)} day lock</p>
+                <p>
+                  {pool.fee}% · {Math.floor(pool.duration / 86400)} day lock
+                </p>
               </div>
             ))
           ) : (
