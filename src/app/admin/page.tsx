@@ -41,7 +41,7 @@ export default function AdminPanel() {
   const { data: paused } = useContractRead({ address: VAULT, abi: vaultAbi, functionName: "paused" });
 
   useEffect(() => {
-    if (address && owner && owner.toLowerCase() === address.toLowerCase()) {
+    if (address && typeof owner === "string" && owner.toLowerCase() === address.toLowerCase()) {
       setIsOwner(true);
     }
   }, [address, owner]);
