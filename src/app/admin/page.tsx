@@ -260,7 +260,11 @@ export default function AdminPanel() {
                   <p>Deposited: {formatUnits(BigInt(p.totalDeposited), DECIMALS)} USDT</p>
                   <p>Profit: {formatUnits(BigInt(p.totalProfit), DECIMALS)} USDT</p>
                   <Button size="sm" className="mr-2 mt-2" onClick={() => togglePoolStatus(i, p.active)}>Toggle Status</Button>
-                  <Button size="sm" className="mt-2 bg-blue-600 hover:bg-blue-700 text-white" onClick={() => moveCapital(i)}>
+                  <Button
+                    size="sm"
+                    className="mt-2 bg-blue-600 hover:bg-blue-700 text-white"
+                    onClick={moveCapital}
+                  >
                     Move Capital
                   </Button>
                 </CardContent>
