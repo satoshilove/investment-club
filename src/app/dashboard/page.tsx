@@ -183,8 +183,9 @@ export default function Dashboard() {
         functionName: "approve",
         args: [VAULT, parsedAmount],
       });
-      const approveReceipt = await publicClient.waitForTransactionReceipt({ hash: approveTx });
-      if (approveReceipt.status !== 1) throw new Error("Approval failed");
+      const approveReceipt = await publicClient?.waitForTransactionReceipt({ hash: approveTx });
+      if (!approveReceipt || approveReceipt.status !== 1) throw new Error("Approval failed");
+
 
       const depositTx = await write({
         abi: vaultAbi,
