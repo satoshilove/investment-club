@@ -1,3 +1,4 @@
+// Full updated Dashboard.tsx with active + inactive pools split and withdraw allowed for inactive
 "use client";
 
 import { useEffect, useState } from "react";
@@ -7,6 +8,7 @@ import {
   useReadContracts,
   useWriteContract,
   usePublicClient,
+  useDisconnect,
 } from "wagmi";
 import { useQueryClient } from "@tanstack/react-query";
 import { formatUnits, parseUnits } from "viem";
@@ -28,16 +30,20 @@ const USDT_DECIMALS = 18;
 
 export default function Dashboard() {
   const { address, isConnected } = useAccount();
+  const { disconnect } = useDisconnect();
   const publicClient = usePublicClient();
   const queryClient = useQueryClient();
 
   const [usdtBalance, setUsdtBalance] = useState("0");
   const [isMember, setIsMember] = useState(false);
   const [pools, setPools] = useState<any[]>([]);
+  const [activePools, setActivePools] = useState<any[]>([]);
+  const [inactivePools, setInactivePools] = useState<any[]>([]);
   const [userDeposits, setUserDeposits] = useState<{ [poolId: number]: string }>({});
   const [depositAmounts, setDepositAmounts] = useState<{ [poolId: number]: string }>({});
   const [error, setError] = useState<string | null>(null);
   const [now, setNow] = useState(Math.floor(Date.now() / 1000));
+  const [userDepositStructsRaw, setUserDepositStructsRaw] = useState<any[]>([]);
 
   const { writeContractAsync: write } = useWriteContract();
 
@@ -62,18 +68,14 @@ export default function Dashboard() {
     query: { enabled: !!address },
   });
 
-  const { data: poolCount, error: poolCountError } = useReadContract({
+  const { data: poolCount } = useReadContract({
     abi: vaultAbi,
     address: VAULT,
     functionName: "poolCount",
     query: { enabled: !!address },
   });
 
-  const {
-    data: poolData,
-    error: poolDataError,
-    refetch: refetchPoolData,
-  } = useReadContracts({
+  const { data: poolData, refetch: refetchPoolData } = useReadContracts({
     contracts:
       poolCount && typeof poolCount === "bigint"
         ? Array.from({ length: Number(poolCount) }, (_, i) => ({
@@ -86,7 +88,7 @@ export default function Dashboard() {
     query: { enabled: !!poolCount },
   });
 
-  const { data: userDepositStructsRaw, refetch: refetchDeposits } = useReadContract({
+  const { data: depositsRaw, refetch: refetchDeposits } = useReadContract({
     abi: vaultAbi,
     address: VAULT,
     functionName: "getUserDeposits",
@@ -104,56 +106,45 @@ export default function Dashboard() {
   }, [balanceRaw, isMemberRaw, balanceError, membershipError]);
 
   useEffect(() => {
-    if (poolCountError || poolDataError) {
-      setError(poolCountError?.message || poolDataError?.message || "Error fetching pool data");
-      return;
-    }
-
-    if (!poolData || !Array.isArray(poolData)) return;
-
+    if (!Array.isArray(poolData)) return;
     const cleaned = poolData.map((res: any) =>
       res?.status === "success" && res?.result?.length > 0
         ? res.result
         : ["Unnamed", 0n, 0n, false, 0n, 0n, 0n, 0n]
     );
-
     setPools(cleaned);
-  }, [poolData, poolCountError, poolDataError]);
+  }, [poolData]);
 
   useEffect(() => {
-    if (Array.isArray(userDepositStructsRaw)) {
-      const parsed: { [key: number]: bigint } = {};
-
-      for (const d of userDepositStructsRaw) {
-        try {
-          if (
-            !d ||
-            typeof d.poolId === "undefined" ||
-            typeof d.amount === "undefined" ||
-            d.amount === null
-          )
-            continue;
-
-          const poolId = Number(d.poolId);
-          const rawAmount = typeof d.amount === "bigint" ? d.amount : BigInt(d.amount);
-          if (!isNaN(poolId) && rawAmount > 0n) {
-            parsed[poolId] = (parsed[poolId] || 0n) + rawAmount;
-          }
-        } catch (err) {
-          console.warn("Invalid deposit struct:", d, err);
-        }
-      }
-
-      const formatted: { [key: number]: string } = {};
-      for (const [k, v] of Object.entries(parsed)) {
-        formatted[Number(k)] = formatUnits(v, USDT_DECIMALS);
-      }
-
-      setUserDeposits(formatted);
-    } else {
-      setUserDeposits({});
+    if (!Array.isArray(depositsRaw)) return;
+    setUserDepositStructsRaw(depositsRaw);
+    const parsed: { [key: number]: bigint } = {};
+    for (const d of depositsRaw) {
+      if (!d) continue;
+      const poolId = Number(d.poolId);
+      const amount = BigInt(d.amount || 0);
+      parsed[poolId] = (parsed[poolId] || 0n) + amount;
     }
-  }, [userDepositStructsRaw]);
+    const formatted: { [key: number]: string } = {};
+    for (const [k, v] of Object.entries(parsed)) {
+      formatted[Number(k)] = formatUnits(v, USDT_DECIMALS);
+    }
+    setUserDeposits(formatted);
+  }, [depositsRaw]);
+
+  useEffect(() => {
+    const active: any[] = [];
+    const inactive: any[] = [];
+    pools.forEach((pool, i) => {
+      if (pool[3]) {
+        active.push({ pool, id: i });
+      } else if (userDeposits[i]) {
+        inactive.push({ pool, id: i });
+      }
+    });
+    setActivePools(active);
+    setInactivePools(inactive);
+  }, [pools, userDeposits]);
 
   function formatUnlockTime(unlockTime: number) {
     const diff = unlockTime - now;
@@ -169,44 +160,67 @@ export default function Dashboard() {
   }
 
   async function handleDeposit(poolId: number) {
-    try {
-      const amount = depositAmounts[poolId]?.trim();
-      if (!amount || isNaN(Number(amount)) || Number(amount) <= 0) {
-        alert("Enter a valid amount.");
-        return;
-      }
+    const amount = depositAmounts[poolId]?.trim();
+    if (!amount || isNaN(Number(amount)) || Number(amount) <= 0) return alert("Invalid amount");
+    const parsedAmount = parseUnits(amount, USDT_DECIMALS);
+    const approveTx = await write({ abi: erc20Abi, address: USDT, functionName: "approve", args: [VAULT, parsedAmount] });
+    await publicClient?.waitForTransactionReceipt({ hash: approveTx });
+    const depositTx = await write({ abi: vaultAbi, address: VAULT, functionName: "deposit", args: [parsedAmount, BigInt(poolId)] });
+    await publicClient?.waitForTransactionReceipt({ hash: depositTx });
+    await queryClient.invalidateQueries(); await refetchDeposits(); await refetchPoolData();
+    setDepositAmounts((prev) => ({ ...prev, [poolId]: "" }));
+    alert("✅ Deposit successful!");
+  }
 
-      const parsedAmount = parseUnits(amount, USDT_DECIMALS);
-      const approveTx = await write({
-        abi: erc20Abi,
-        address: USDT,
-        functionName: "approve",
-        args: [VAULT, parsedAmount],
-      });
-      const approveReceipt = await publicClient?.waitForTransactionReceipt({ hash: approveTx });
-      if (!approveReceipt || approveReceipt.status?.toString() !== "success")
-        throw new Error("Approval failed");
+  async function handleWithdraw(poolId: number) {
+    const index = userDepositStructsRaw.findIndex((d: any) => Number(d.poolId) === poolId);
+    if (index === -1) return alert("No deposit found");
+    const d = userDepositStructsRaw[index];
+    if (BigInt(d.amount) === 0n) return alert("Nothing to withdraw");
+    if (!d.unlockTime || Number(d.unlockTime) > now) return alert("Still locked");
+    const txHash = await write({ abi: vaultAbi, address: VAULT, functionName: "withdraw", args: [BigInt(index)] });
+    const receipt = await publicClient?.waitForTransactionReceipt({ hash: txHash });
+    if (!receipt || receipt.status?.toString() !== "success") throw new Error("Withdraw failed");
+    await queryClient.invalidateQueries(); await refetchDeposits(); await refetchPoolData();
+    alert("✅ Withdrawal successful!");
+  }
 
-      const depositTx = await write({
-        abi: vaultAbi,
-        address: VAULT,
-        functionName: "deposit",
-        args: [parsedAmount, BigInt(poolId)],
-      });
-      const depositReceipt = await publicClient?.waitForTransactionReceipt({ hash: depositTx });
-      if (!depositReceipt || depositReceipt.status?.toString() !== "success")
-        throw new Error("Deposit failed");
+  function renderPoolCard(pool: any[], poolId: number, allowDeposit: boolean) {
+    const name = pool[0];
+    const lockDuration = pool[1];
+    const feePercent = pool[2];
+    const totalDeposited = pool[4];
+    const totalWithdrawn = pool[5];
+    const tvl = BigInt(totalDeposited) - BigInt(totalWithdrawn);
+    const userDeposit = userDeposits[poolId];
+    const unlockInfo = userDepositStructsRaw.find((d: any) => Number(d.poolId) === poolId);
+    const unlockString = unlockInfo ? formatUnlockTime(Number(unlockInfo.unlockTime)) : "N/A";
+    const canWithdraw = unlockString === "✅ Unlocked" && !!userDeposit;
 
-
-      await queryClient.invalidateQueries();
-      await refetchDeposits();
-      await refetchPoolData();
-      setDepositAmounts((prev) => ({ ...prev, [poolId]: "" }));
-      alert("✅ Deposit successful!");
-    } catch (err: any) {
-      console.error("❌ Deposit failed:", err);
-      alert(err?.message || "Deposit error");
-    }
+    return (
+      <div key={poolId} className="bg-[#121212] p-6 rounded-xl border border-gray-800">
+        <h3 className="text-xl font-semibold mb-2">{name}</h3>
+        <p className="text-sm text-gray-400 mb-1">APY: {Number(feePercent)}% · Lock: {Number(lockDuration) / 86400} days</p>
+        <p className="text-sm text-gray-400 mb-1">TVL: {formatUnits(tvl < 0n ? 0n : tvl, USDT_DECIMALS)} USDT</p>
+        <p className="text-sm text-gray-400 mb-1">Your Deposit: {userDeposit || "0"} USDT</p>
+        <p className="text-sm text-yellow-400 mb-2">Unlocks: {unlockString}</p>
+        {allowDeposit && (
+          <div className="flex items-center gap-2 mb-2">
+            <input
+              type="number"
+              placeholder="Enter USDT"
+              step="0.01"
+              min="0"
+              value={depositAmounts[poolId] || ""}
+              onChange={(e) => updateDepositAmount(poolId, e.target.value)}
+              className="bg-black border border-gray-700 text-white px-3 py-1 rounded text-sm w-32"
+            />
+            <Button size="sm" onClick={() => handleDeposit(poolId)} disabled={!isMember}>Deposit</Button>
+          </div>
+        )}
+        <Button variant="outline" size="sm" onClick={() => handleWithdraw(poolId)} disabled={!isMember || !canWithdraw}>Withdraw</Button>
+      </div>
+    );
   }
 
   return (
@@ -219,7 +233,6 @@ export default function Dashboard() {
             <a href="/dashboard" className="text-gray-300 hover:text-white font-medium">Dashboard</a>
           </nav>
         </div>
-
         {!isConnected ? (
           <p className="text-gray-400">Please connect your wallet.</p>
         ) : error ? (
@@ -227,78 +240,29 @@ export default function Dashboard() {
         ) : (
           <>
             <div className="mb-6 bg-[#121212] p-6 rounded-xl border border-gray-800">
-              <h2 className="text-xl font-semibold mb-2">👤 Wallet</h2>
-              <p className="text-gray-300 break-all">{address}</p>
+              <div className="flex items-center justify-between">
+                <div>
+                  <h2 className="text-xl font-semibold mb-1">👤 Wallet</h2>
+                  <p className="text-gray-300 break-all">{address}</p>
+                </div>
+                <Button size="sm" variant="outline" onClick={() => disconnect()}>Disconnect</Button>
+              </div>
             </div>
-
             <div className="mb-6 bg-[#121212] p-6 rounded-xl border border-gray-800">
               <h2 className="text-xl font-semibold mb-2">💰 USDT Balance</h2>
               <p className="text-gray-300">{Number(usdtBalance).toFixed(2)} USDT</p>
             </div>
-
             <div className="mb-6 bg-[#121212] p-6 rounded-xl border border-gray-800">
               <h2 className="text-xl font-semibold mb-2">🛡️ Membership Status</h2>
-              <p className={isMember ? "text-green-400 font-semibold" : "text-red-500 font-semibold"}>
-                {isMember ? "Active Member" : "Not a Member"}
-              </p>
+              <p className={isMember ? "text-green-400 font-semibold" : "text-red-500 font-semibold"}>{isMember ? "Active Member" : "Not a Member"}</p>
             </div>
-
             <h2 className="text-2xl font-bold mt-10 mb-4">Active Pools</h2>
             <div className="grid md:grid-cols-2 gap-6">
-              {pools.length > 0 ? (
-                pools.map((pool: any[], poolId: number) => {
-                  const name = pool[0] || `Pool ${poolId}`;
-                  const lockDuration = pool[1] || 0n;
-                  const feePercent = pool[2] || 0n;
-                  const active = pool[3] || false;
-                  const totalDeposited = pool[4];
-
-                  let tvlDisplay = "Loading...";
-                  try {
-                    tvlDisplay = formatUnits(BigInt(totalDeposited), USDT_DECIMALS);
-                  } catch {
-                    tvlDisplay = "Format error";
-                  }
-
-                  const unlockString = Array.isArray(userDepositStructsRaw)
-                    ? (() => {
-                        const d = userDepositStructsRaw.find((d: any) => Number(d.poolId) === poolId);
-                        return d ? formatUnlockTime(Number(d.unlockTime)) : "N/A";
-                      })()
-                    : "N/A";
-
-                  return (
-                    <div key={poolId} className="bg-[#121212] p-6 rounded-xl border border-gray-800">
-                      <h3 className="text-xl font-semibold mb-2">{name}</h3>
-                      <p className="text-sm text-gray-400 mb-1">
-                        APY: {typeof feePercent === "bigint" ? Number(feePercent) : feePercent}% · Lock: {lockDuration && typeof lockDuration === "bigint" ? `${Number(lockDuration) / 86400} days` : "N/A"}
-                      </p>
-                      <p className="text-sm text-gray-400 mb-1">TVL: {tvlDisplay} USDT</p>
-                      <p className="text-sm text-gray-400 mb-1">Your Deposit: {userDeposits[poolId] || "0"} USDT</p>
-                      <p className="text-sm text-yellow-400 mb-2">Unlocks: {unlockString}</p>
-                      <div className="flex items-center gap-2 mb-2">
-                        <input
-                          type="number"
-                          placeholder="Enter USDT"
-                          step="0.01"
-                          min="0"
-                          value={depositAmounts[poolId] || ""}
-                          onChange={(e) => updateDepositAmount(poolId, e.target.value)}
-                          className="bg-black border border-gray-700 text-white px-3 py-1 rounded text-sm w-32"
-                        />
-                        <Button size="sm" onClick={() => handleDeposit(poolId)} disabled={!isMember}>
-                          Deposit
-                        </Button>
-                      </div>
-                      <Button variant="outline" size="sm" disabled>
-                        Withdraw
-                      </Button>
-                    </div>
-                  );
-                })
-              ) : (
-                <p className="text-gray-400">No active pools available.</p>
-              )}
+              {activePools.length ? activePools.map(({ pool, id }) => renderPoolCard(pool, id, true)) : <p className="text-gray-400">No active pools.</p>}
+            </div>
+            <h2 className="text-2xl font-bold mt-10 mb-4">Inactive Pools (Withdraw Only)</h2>
+            <div className="grid md:grid-cols-2 gap-6">
+              {inactivePools.length ? inactivePools.map(({ pool, id }) => renderPoolCard(pool, id, false)) : <p className="text-gray-400">No inactive pools with deposits.</p>}
             </div>
           </>
         )}
