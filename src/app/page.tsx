@@ -1,3 +1,4 @@
+// src/app/page.tsx
 "use client";
 
 import Image from "next/image";
@@ -10,7 +11,6 @@ import {
   useWriteContract,
   useWaitForTransactionReceipt,
 } from "wagmi";
-import { injected } from "@wagmi/connectors";
 import { parseUnits } from "viem";
 import logo from "@/assets/logo_paragon_circle.png";
 import { Button } from "@/components/ui/button";
@@ -27,9 +27,10 @@ const CHART_IDS = ["bitcoin", "ethereum", "binancecoin", "tether", "solana", "ri
 
 export default function Home() {
   const { address, isConnected } = useAccount();
-  const { connectAsync } = useConnect();
+  const { connectAsync, connectors } = useConnect();
   const { disconnect } = useDisconnect();
 
+  const [showWallets, setShowWallets] = useState(false);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const [approveTxHash, setApproveTxHash] = useState<`0x${string}` | undefined>();
@@ -157,11 +158,13 @@ export default function Home() {
     else setError("You must be a member to explore pools.");
   };
 
-  const handleConnect = async () => {
+  const handleConnect = async (connectorIndex: number) => {
+    const connector = connectors[connectorIndex];
     try {
-      await connectAsync({ connector: injected() });
-    } catch {
-      setError("Wallet connection failed.");
+      await connectAsync({ connector });
+      setShowWallets(false);
+    } catch (err: any) {
+      setError(err.message || "Wallet connection failed.");
     }
   };
 
@@ -187,7 +190,24 @@ export default function Home() {
             {`${address?.slice(0, 6)}...${address?.slice(-4)}`} (Disconnect)
           </Button>
         ) : (
-          <Button onClick={handleConnect}>Connect Wallet</Button>
+          <div className="relative">
+            <Button onClick={() => setShowWallets(!showWallets)} className="px-4 py-2 text-sm">
+              Connect Wallet
+            </Button>
+            {showWallets && (
+              <div className="absolute right-0 mt-2 bg-black border border-gray-700 rounded-md shadow-lg z-50">
+                {connectors.map((connector, i) => (
+                  <button
+                    key={connector.id}
+                    onClick={() => handleConnect(i)}
+                    className="block w-full text-left px-4 py-2 text-white hover:bg-gray-800"
+                  >
+                    {connector.name}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
         )}
       </div>
 
@@ -252,7 +272,7 @@ export default function Home() {
           <div className="flex flex-col items-center p-4 bg-[#1a1a1a] rounded-xl shadow-md">
             <span className="text-3xl mb-2">🦊</span>
            <h3 className="font-semibold text-lg mb-1">Connect Wallet</h3>
-            <p className="text-sm text-gray-400">Use MetaMask to connect your crypto wallet.</p>
+            <p className="text-sm text-gray-400">Connect using MetaMask, Trust Wallet, or other WalletConnect options.</p>
           </div>
           <div className="flex flex-col items-center p-4 bg-[#1a1a1a] rounded-xl shadow-md">
             <span className="text-3xl mb-2">💳</span>
@@ -300,32 +320,31 @@ export default function Home() {
       <section className="py-12 px-6 bg-gradient-to-br from-[#0a0f1c] to-[#111827]">
         <h2 className="text-3xl font-bold text-center mb-10 text-white">Live Crypto Prices</h2>
         <div className="max-w-6xl mx-auto grid md:grid-cols-3 lg:grid-cols-6 gap-6 text-center">
-          {Object.entries(prices).map(([symbol, price]) => (
-            <div
-              key={symbol}
-              className="flex flex-col items-center p-4 bg-gradient-to-tr from-[#101c26] to-[#1f2937] border border-[#2a3747] rounded-2xl shadow-lg text-white"
-            >
-              <span className="text-xl font-semibold mb-2">{symbol}</span>
-              <p className="text-sm mb-3 text-gray-400">{price}</p>
-              <div className="w-full h-12">
-                <Sparklines
-                  data={[
-                    Math.random() * 10 + 1,
-                    Math.random() * 10 + 2,
-                    Math.random() * 10 + 3,
-                    Math.random() * 10 + 2,
-                    Math.random() * 10 + 4,
-                    Math.random() * 10 + 3,
-                  ]}
-                  width={100}
-                  height={40}
-                  margin={5}
-                >
-                  <SparklinesLine color="#00ffab" style={{ strokeWidth: 2, fill: "none" }} />
-                </Sparklines>
+          {Object.entries(prices).map(([symbol, price]) => {
+            const [chartData, setChartData] = useState<number[]>([]);
+
+            useEffect(() => {
+              const randomSeries = Array.from({ length: 6 }, () => Math.random() * 10 + 1);
+              setChartData(randomSeries);
+            }, []);
+
+            return (
+              <div
+                key={symbol}
+                className="flex flex-col items-center p-4 bg-gradient-to-tr from-[#101c26] to-[#1f2937] border border-[#2a3747] rounded-2xl shadow-lg text-white"
+              >
+                <span className="text-xl font-semibold mb-2">{symbol}</span>
+                <p className="text-sm mb-3 text-gray-400">{price}</p>
+                <div className="w-full h-12">
+                  {chartData.length > 0 && (
+                    <Sparklines data={chartData} width={100} height={40} margin={5}>
+                      <SparklinesLine color="#00ffab" style={{ strokeWidth: 2, fill: "none" }} />
+                    </Sparklines>
+                  )}
+                </div>
               </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       </section>
 

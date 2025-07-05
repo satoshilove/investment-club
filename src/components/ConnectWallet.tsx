@@ -1,18 +1,22 @@
 // src/components/ConnectWallet.tsx
 "use client";
 
+import { useState } from "react";
 import { useAccount, useConnect, useDisconnect } from "wagmi";
-import { injected } from "@wagmi/connectors";
 import { Button } from "../components/ui/button";
 
 export default function ConnectWallet() {
   const { address, isConnected } = useAccount();
-  const { connectAsync } = useConnect(); // don't pass connector here
+  const { connectAsync, connectors } = useConnect();
   const { disconnect } = useDisconnect();
 
-  const handleConnect = async () => {
+  const [showWallets, setShowWallets] = useState(false);
+
+  const handleConnect = async (connectorIndex: number) => {
+    const connector = connectors[connectorIndex];
     try {
-      await connectAsync({ connector: injected() }); // pass connector here
+      await connectAsync({ connector });
+      setShowWallets(false);
     } catch (error) {
       console.error("Wallet connection failed", error);
     }
@@ -31,8 +35,24 @@ export default function ConnectWallet() {
   }
 
   return (
-    <Button onClick={handleConnect} className="px-4 py-2 text-sm">
-      Connect Wallet
-    </Button>
+    <div className="relative">
+      <Button onClick={() => setShowWallets(!showWallets)} className="px-4 py-2 text-sm">
+        Connect Wallet
+      </Button>
+
+      {showWallets && (
+        <div className="absolute right-0 mt-2 bg-black border border-gray-700 rounded-md shadow-lg z-50">
+          {connectors.map((connector, i) => (
+            <button
+              key={connector.id}
+              onClick={() => handleConnect(i)}
+              className="block w-full text-left px-4 py-2 text-white hover:bg-gray-800"
+            >
+              {connector.name}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
   );
 }
