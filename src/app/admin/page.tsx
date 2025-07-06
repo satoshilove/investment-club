@@ -1,7 +1,12 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { useAccount, useConnect, useContractRead, useWriteContract } from "wagmi";
+import {
+  useAccount,
+  useConnect,
+  useContractRead,
+  useWriteContract,
+} from "wagmi";
 import { formatUnits, parseUnits, isAddress } from "viem";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -27,18 +32,50 @@ export default function AdminPanel() {
   const [newMembershipFee, setNewMembershipFee] = useState("");
   const [newPool, setNewPool] = useState({ name: "", duration: "", fee: "" });
   const [pools, setPools] = useState<any[]>([]);
-  const [poolCount, setPoolCount] = useState(0);
-  const [memberAddress, setMemberAddress] = useState("");
   const [movePoolId, setMovePoolId] = useState("");
   const [moveAddress, setMoveAddress] = useState("");
   const [moveAmount, setMoveAmount] = useState("");
 
-  const { data: owner } = useContractRead({ address: VAULT, abi: vaultAbi, functionName: "owner" });
-  const { data: balance } = useContractRead({ address: USDT, abi: erc20Abi, functionName: "balanceOf", args: [VAULT] });
-  const { data: count } = useContractRead({ address: VAULT, abi: vaultAbi, functionName: "poolCount" });
-  const { data: feeRaw } = useContractRead({ address: MEMBERSHIP, abi: membershipAbi, functionName: "membershipFeeUSDT" });
-  const { data: emergencyUnlock } = useContractRead({ address: VAULT, abi: vaultAbi, functionName: "emergencyUnlock" });
-  const { data: paused } = useContractRead({ address: VAULT, abi: vaultAbi, functionName: "paused" });
+  // New state variables for additional settings
+  const [addApprovedPool, setAddApprovedPool] = useState<{ poolAddress: string }>({
+    poolAddress: "",
+  });
+  const [removeApprovedPool, setRemoveApprovedPool] = useState<{ poolAddress: string }>({
+    poolAddress: "",
+  });
+
+  const [returnFromInvestment, setReturnFromInvestment] = useState({ poolId: "", amount: "" });
+
+  const { data: owner } = useContractRead({
+    address: VAULT,
+    abi: vaultAbi,
+    functionName: "owner",
+  });
+
+  const { data: balance } = useContractRead({
+    address: USDT,
+    abi: erc20Abi,
+    functionName: "balanceOf",
+    args: [VAULT],
+  });
+
+  const { data: feeRaw } = useContractRead({
+    address: MEMBERSHIP,
+    abi: membershipAbi,
+    functionName: "membershipFeeUSDT",
+  });
+
+  const { data: emergencyUnlock } = useContractRead({
+    address: VAULT,
+    abi: vaultAbi,
+    functionName: "emergencyUnlock",
+  });
+
+  const { data: paused } = useContractRead({
+    address: VAULT,
+    abi: vaultAbi,
+    functionName: "paused",
+  });
 
   useEffect(() => {
     if (address && typeof owner === "string" && owner.toLowerCase() === address.toLowerCase()) {
@@ -48,34 +85,38 @@ export default function AdminPanel() {
 
   useEffect(() => {
     if (balance && typeof balance === "bigint") {
-      setVaultBalance((Number(balance) / 10 ** DECIMALS).toFixed(2));
+      setVaultBalance(formatUnits(balance, DECIMALS));
     }
   }, [balance]);
 
   useEffect(() => {
     if (feeRaw && typeof feeRaw === "bigint") {
-      setMembershipFee((Number(feeRaw) / 10 ** DECIMALS).toFixed(2));
+      setMembershipFee(formatUnits(feeRaw, DECIMALS));
     }
   }, [feeRaw]);
 
   useEffect(() => {
-    if (count && typeof count === "bigint") {
-      setPoolCount(Number(count));
-    }
-  }, [count]);
-
-  useEffect(() => {
-    if (poolCount > 0) loadPools();
-  }, [poolCount]);
+    loadPools();
+  }, []);
 
   const loadPools = async () => {
-    const allPools = await Promise.all(
-      [...Array(poolCount)].map(async (_, i) => {
-        const res = await fetch(`/api/readPool?id=${i}`);
-        return res.json();
-      })
-    );
-    setPools(allPools);
+    try {
+      const res = await fetch("/api/pools");
+      const data = await res.json();
+
+      if (!res.ok || !Array.isArray(data)) {
+        console.error("❌ Invalid response from /api/pools:", data);
+        setPools([]);
+        return;
+      }
+
+      const validPools = data.filter((p) => typeof p.id === "number" && typeof p.name === "string");
+      setPools(validPools);
+      console.log("✅ Loaded pools:", validPools);
+    } catch (error) {
+      console.error("❌ loadPools error:", error);
+      setPools([]);
+    }
   };
 
   const createPool = async () => {
@@ -85,7 +126,7 @@ export default function AdminPanel() {
         address: VAULT,
         abi: vaultAbi,
         functionName: "createPool",
-        args: [newPool.name, BigInt(newPool.duration), parseInt(newPool.fee)]
+        args: [newPool.name, BigInt(Number(newPool.duration)), parseInt(newPool.fee)],
       });
       alert("✅ Pool created");
       setNewPool({ name: "", duration: "", fee: "" });
@@ -101,7 +142,7 @@ export default function AdminPanel() {
         address: VAULT,
         abi: vaultAbi,
         functionName: "setPoolStatus",
-        args: [id, !currentStatus]
+        args: [id, !currentStatus],
       });
       alert("✅ Pool status updated");
       loadPools();
@@ -116,7 +157,7 @@ export default function AdminPanel() {
         address: VAULT,
         abi: vaultAbi,
         functionName: "toggleEmergencyUnlock",
-        args: []
+        args: [!emergencyUnlock],
       });
       alert("✅ Emergency toggled");
     } catch {
@@ -130,7 +171,7 @@ export default function AdminPanel() {
         address: VAULT,
         abi: vaultAbi,
         functionName: paused ? "unpause" : "pause",
-        args: []
+        args: [],
       });
       alert(`✅ Contract ${paused ? "unpaused" : "paused"}`);
     } catch {
@@ -139,37 +180,24 @@ export default function AdminPanel() {
   };
 
   const moveCapital = async () => {
-    if (!movePoolId || !isAddress(moveAddress) || !moveAmount || isNaN(Number(moveAmount))) return alert("❌ Invalid input");
+    if (!movePoolId || !isAddress(moveAddress) || !moveAmount || isNaN(Number(moveAmount))) {
+      return alert("❌ Invalid input");
+    }
     try {
       const amtWei = parseUnits(moveAmount, DECIMALS);
       await writeContractAsync({
         address: VAULT,
         abi: vaultAbi,
         functionName: "moveToInvestment",
-        args: [parseInt(movePoolId), moveAddress, amtWei]
+        args: [parseInt(movePoolId), moveAddress, amtWei],
       });
       alert("✅ Capital moved");
       setMovePoolId("");
       setMoveAddress("");
       setMoveAmount("");
+      loadPools();
     } catch {
       alert("❌ Move failed");
-    }
-  };
-
-  const removeMember = async () => {
-    if (!isAddress(memberAddress)) return alert("Invalid address");
-    try {
-      await writeContractAsync({
-        address: VAULT,
-        abi: vaultAbi,
-        functionName: "removeMember",
-        args: [memberAddress]
-      });
-      alert("✅ Member removed");
-      setMemberAddress("");
-    } catch {
-      alert("❌ Failed to remove member");
     }
   };
 
@@ -181,12 +209,70 @@ export default function AdminPanel() {
         address: MEMBERSHIP,
         abi: membershipAbi,
         functionName: "updateMembershipFeeUSDT",
-        args: [fee]
+        args: [fee],
       });
       alert("✅ Membership fee updated");
       setNewMembershipFee("");
     } catch {
       alert("❌ Failed to update membership fee");
+    }
+  };
+
+  // New functions for additional settings
+  const handleAddApprovedPool = async () => {
+    if (!isAddress(addApprovedPool.poolAddress)) {
+      return alert("❌ Invalid address");
+    }
+    try {
+      await writeContractAsync({
+        address: VAULT,
+        abi: vaultAbi,
+        functionName: "addApprovedPool",
+        args: [addApprovedPool.poolAddress],
+      });
+      alert("✅ Approved pool added");
+      setAddApprovedPool({ poolAddress: "" });
+    } catch {
+      alert("❌ Failed to add approved pool");
+    }
+  };
+
+  const handleRemoveApprovedPool = async () => {
+    if (!isAddress(removeApprovedPool.poolAddress)) {
+      return alert("❌ Invalid address");
+    }
+    try {
+      await writeContractAsync({
+        address: VAULT,
+        abi: vaultAbi,
+        functionName: "removeApprovedPool",
+        args: [removeApprovedPool.poolAddress],
+      });
+      alert("✅ Approved pool removed");
+      setRemoveApprovedPool({ poolAddress: "" });
+    } catch {
+      alert("❌ Failed to remove approved pool");
+    }
+  };
+
+
+  const handleReturnFromInvestment = async () => {
+    if (!returnFromInvestment.poolId || !returnFromInvestment.amount || isNaN(Number(returnFromInvestment.amount))) {
+      return alert("❌ Invalid input");
+    }
+    try {
+      const amtWei = parseUnits(returnFromInvestment.amount, DECIMALS);
+      await writeContractAsync({
+        address: VAULT,
+        abi: vaultAbi,
+        functionName: "returnFromInvestment",
+        args: [parseInt(returnFromInvestment.poolId), amtWei],
+      });
+      alert("✅ Capital returned from investment");
+      setReturnFromInvestment({ poolId: "", amount: "" });
+      loadPools();
+    } catch {
+      alert("❌ Failed to return from investment");
     }
   };
 
@@ -210,6 +296,34 @@ export default function AdminPanel() {
           <>
             <Card className="mb-6 bg-[#1c1f26]">
               <CardContent>
+                <h2 className="text-xl font-semibold mb-4">🧱 Pool Management</h2>
+
+                <div className="mb-4">
+                  <input type="text" placeholder="Name" value={newPool.name} onChange={(e) => setNewPool({ ...newPool, name: e.target.value })} className="text-black px-2 py-1 mr-2" />
+                  <input type="number" placeholder="Duration (s)" value={newPool.duration} onChange={(e) => setNewPool({ ...newPool, duration: e.target.value })} className="text-black px-2 py-1 mr-2" />
+                  <input type="number" placeholder="Fee (%)" value={newPool.fee} onChange={(e) => setNewPool({ ...newPool, fee: e.target.value })} className="text-black px-2 py-1 mr-2" />
+                  <Button onClick={createPool}>Create Pool</Button>
+                </div>
+
+                {pools.length === 0 ? (
+                  <p className="text-red-500">No pools loaded. Check backend or contract.</p>
+                ) : (
+                  pools.map((p) => (
+                    <div key={p.id} className="mb-4 border-t border-gray-600 pt-4">
+                      <p><strong>{p.name}</strong> (ID: {p.id})</p>
+                      <p>Duration: {p.duration}s | Fee: {p.fee}% | Status: {p.active ? "✅" : "❌"}</p>
+                      <p><strong>TVL:</strong> {p.currentTVL} USDT</p>
+                      <p><strong>Total Profit:</strong> {p.totalProfit} USDT</p>
+                      <p><strong>Capital Sent Out:</strong> {p.capitalSentOut} USDT</p>
+                      <Button size="sm" onClick={() => togglePoolStatus(p.id, p.active)} className="mt-2">Toggle Status</Button>
+                    </div>
+                  ))
+                )}
+              </CardContent>
+            </Card>
+
+            <Card className="mb-6 bg-[#1c1f26]">
+              <CardContent>
                 <h2 className="text-xl font-semibold mb-2">⚙️ Vault Controls</h2>
                 <p>Vault Balance: {vaultBalance} USDT</p>
                 <p className="mt-2">Emergency Unlock: {emergencyUnlock ? "🛑 Enabled" : "✅ Disabled"}</p>
@@ -230,6 +344,63 @@ export default function AdminPanel() {
                     <Button className="bg-blue-600 hover:bg-blue-700 text-white" onClick={moveCapital}>Move</Button>
                   </div>
                 </div>
+
+                <div className="mt-6">
+                  <h3 className="text-lg font-semibold mb-2">📥 Return from Investment</h3>
+                  <div className="flex flex-wrap gap-2">
+                    <input type="number" placeholder="Pool ID" className="text-black px-2 py-1" value={returnFromInvestment.poolId} onChange={(e) => setReturnFromInvestment({ ...returnFromInvestment, poolId: e.target.value })} />
+                    <input type="number" placeholder="Amount (USDT)" className="text-black px-2 py-1" value={returnFromInvestment.amount} onChange={(e) => setReturnFromInvestment({ ...returnFromInvestment, amount: e.target.value })} />
+                    <Button className="bg-green-600 hover:bg-green-700 text-white" onClick={handleReturnFromInvestment}>Return</Button>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+
+            <Card className="mb-6 bg-[#1c1f26]">
+              <CardContent>
+                <h2 className="text-xl font-semibold mb-4">🏛️ Approved Pool Management</h2>
+                
+                <div className="mb-6">
+                  <h3 className="text-lg font-semibold mb-2">➕ Add Approved Pool</h3>
+                  <div className="flex flex-wrap gap-2">
+                    <input
+                      type="text"
+                      placeholder="Pool Address"
+                      className="text-black px-2 py-1"
+                      value={addApprovedPool.poolAddress}
+                      onChange={(e) =>
+                        setAddApprovedPool({ poolAddress: e.target.value })
+                      }
+                    />
+                    <Button
+                      className="bg-blue-600 hover:bg-blue-700 text-white"
+                      onClick={handleAddApprovedPool}
+                    >
+                      Add
+                    </Button>
+                  </div>
+                </div>
+                
+                <div className="mb-6">
+                  <h3 className="text-lg font-semibold mb-2">➖ Remove Approved Pool</h3>
+                  <div className="flex flex-wrap gap-2">
+                    <input
+                      type="text"
+                      placeholder="Pool Address"
+                      className="text-black px-2 py-1"
+                      value={removeApprovedPool.poolAddress}
+                      onChange={(e) =>
+                        setRemoveApprovedPool({ poolAddress: e.target.value })
+                      }
+                    />
+                    <Button
+                      className="bg-blue-600 hover:bg-blue-700 text-white"
+                      onClick={handleRemoveApprovedPool}
+                    >
+                      Remove
+                    </Button>
+                  </div>
+                </div>
               </CardContent>
             </Card>
 
@@ -239,45 +410,6 @@ export default function AdminPanel() {
                 <p>Current Fee: {membershipFee} USDT</p>
                 <input type="number" placeholder="New Fee" value={newMembershipFee} onChange={(e) => setNewMembershipFee(e.target.value)} className="text-black px-2 py-1 mr-2" />
                 <Button onClick={updateMembershipFee}>Update Fee</Button>
-              </CardContent>
-            </Card>
-
-            <Card className="mb-6 bg-[#1c1f26]">
-              <CardContent>
-                <h2 className="text-xl font-semibold mb-2">🧱 Create Pool</h2>
-                <input type="text" placeholder="Name" value={newPool.name} onChange={(e) => setNewPool({ ...newPool, name: e.target.value })} className="text-black px-2 py-1 mr-2" />
-                <input type="number" placeholder="Duration (s)" value={newPool.duration} onChange={(e) => setNewPool({ ...newPool, duration: e.target.value })} className="text-black px-2 py-1 mr-2" />
-                <input type="number" placeholder="Fee (%)" value={newPool.fee} onChange={(e) => setNewPool({ ...newPool, fee: e.target.value })} className="text-black px-2 py-1 mr-2" />
-                <Button onClick={createPool}>Create</Button>
-              </CardContent>
-            </Card>
-
-            {pools.map((p, i) => (
-              <Card key={i} className="mb-4 bg-[#1c1f26]">
-                <CardContent>
-                  <p><strong>{p.name}</strong> (ID: {i})</p>
-                  <p>Duration: {p.duration}s | Fee: {p.fee}% | Status: {p.active ? "✅" : "❌"}</p>
-                  <p>Deposited: {formatUnits(BigInt(p.totalDeposited), DECIMALS)} USDT</p>
-                  <p>Profit: {formatUnits(BigInt(p.totalProfit), DECIMALS)} USDT</p>
-                  <Button size="sm" className="mr-2 mt-2" onClick={() => togglePoolStatus(i, p.active)}>Toggle Status</Button>
-                  <Button
-                    size="sm"
-                    className="mt-2 bg-blue-600 hover:bg-blue-700 text-white"
-                    onClick={moveCapital}
-                  >
-                    Move Capital
-                  </Button>
-                </CardContent>
-              </Card>
-            ))}
-
-            <Card className="mt-6 bg-[#1c1f26]">
-              <CardContent>
-                <h2 className="text-xl font-semibold mb-2">👤 Member Management</h2>
-                <input type="text" placeholder="Wallet Address" value={memberAddress} onChange={(e) => setMemberAddress(e.target.value)} className="text-black px-2 py-1 mr-2" />
-                <Button variant="outline" className="text-red-600 border-red-600 hover:bg-red-100" onClick={removeMember}>
-                  Remove Member
-                </Button>
               </CardContent>
             </Card>
           </>

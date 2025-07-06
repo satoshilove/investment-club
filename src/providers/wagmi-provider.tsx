@@ -1,32 +1,35 @@
-// src/providers/wagmi-provider.tsx
 "use client";
 
 import { WagmiConfig, createConfig, http } from "wagmi";
-import { bscTestnet } from "wagmi/chains";
+import { bsc, bscTestnet } from "wagmi/chains";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { injected, walletConnect } from "@wagmi/connectors";
 
-// 👇 Replace this with your WalletConnect Project ID from https://cloud.walletconnect.com
-const WALLETCONNECT_PROJECT_ID = "974ebd43f4df9852b2dd53c83aa32ada"; 
+// WalletConnect Project ID
+const WALLETCONNECT_PROJECT_ID = "974ebd43f4df9852b2dd53c83aa32ada";
 
-// BSC Testnet RPC
-const bscTestnetRpcUrl = "https://data-seed-prebsc-1-s1.binance.org:8545";
+// BSC RPC URLs
+const BSC_MAINNET_RPC = "https://bsc-dataseed1.binance.org/";
+const BSC_TESTNET_RPC = "https://data-seed-prebsc-1-s1.binance.org:8545";
 
+// ✅ Create Wagmi config
 const config = createConfig({
-  chains: [bscTestnet],
+  chains: [bsc, bscTestnet],
   connectors: [
-    injected(), // MetaMask, Trust (if browser extension), etc.
+    injected(),
     walletConnect({
       projectId: WALLETCONNECT_PROJECT_ID,
-      showQrModal: true, // Required for mobile wallets like Trust Wallet
+      showQrModal: true,
     }),
   ],
   transports: {
-    [bscTestnet.id]: http(bscTestnetRpcUrl),
+    [bsc.id]: http(BSC_MAINNET_RPC),
+    [bscTestnet.id]: http(BSC_TESTNET_RPC),
   },
   ssr: true,
 });
 
+// React Query
 const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
@@ -36,6 +39,7 @@ const queryClient = new QueryClient({
   },
 });
 
+// Provider wrapper
 export function WagmiProvider({ children }: { children: React.ReactNode }) {
   return (
     <WagmiConfig config={config}>
@@ -45,3 +49,6 @@ export function WagmiProvider({ children }: { children: React.ReactNode }) {
     </WagmiConfig>
   );
 }
+
+// ✅ Export the config so you can use it with getChainId(), switchChain(), etc.
+export { config };

@@ -12,26 +12,6 @@
   {
     "anonymous": false,
     "inputs": [
-      { "indexed": true, "internalType": "address", "name": "owner", "type": "address" },
-      { "indexed": true, "internalType": "address", "name": "approved", "type": "address" },
-      { "indexed": true, "internalType": "uint256", "name": "tokenId", "type": "uint256" }
-    ],
-    "name": "Approval",
-    "type": "event"
-  },
-  {
-    "anonymous": false,
-    "inputs": [
-      { "indexed": true, "internalType": "address", "name": "owner", "type": "address" },
-      { "indexed": true, "internalType": "address", "name": "operator", "type": "address" },
-      { "indexed": false, "internalType": "bool", "name": "approved", "type": "bool" }
-    ],
-    "name": "ApprovalForAll",
-    "type": "event"
-  },
-  {
-    "anonymous": false,
-    "inputs": [
       { "indexed": true, "internalType": "address", "name": "pool", "type": "address" },
       { "indexed": false, "internalType": "bool", "name": "approved", "type": "bool" }
     ],
@@ -104,6 +84,15 @@
     "anonymous": false,
     "inputs": [
       { "indexed": true, "internalType": "uint256", "name": "poolId", "type": "uint256" },
+      { "indexed": false, "internalType": "uint256", "name": "amount", "type": "uint256" }
+    ],
+    "name": "ProfitDistributed",
+    "type": "event"
+  },
+  {
+    "anonymous": false,
+    "inputs": [
+      { "indexed": true, "internalType": "uint256", "name": "poolId", "type": "uint256" },
       { "indexed": false, "internalType": "address", "name": "to", "type": "address" },
       { "indexed": false, "internalType": "uint256", "name": "amount", "type": "uint256" }
     ],
@@ -130,22 +119,18 @@
   {
     "anonymous": false,
     "inputs": [
-      { "indexed": true, "internalType": "address", "name": "from", "type": "address" },
-      { "indexed": true, "internalType": "address", "name": "to", "type": "address" },
-      { "indexed": true, "internalType": "uint256", "name": "tokenId", "type": "uint256" }
+      { "indexed": false, "internalType": "address", "name": "account", "type": "address" }
     ],
-    "name": "Transfer",
+    "name": "Paused",
     "type": "event"
   },
   {
+    "anonymous": false,
     "inputs": [
-      { "internalType": "address", "name": "to", "type": "address" },
-      { "internalType": "bool", "name": "approved", "type": "bool" }
+      { "indexed": false, "internalType": "address", "name": "account", "type": "address" }
     ],
-    "name": "approve",
-    "outputs": [],
-    "stateMutability": "nonpayable",
-    "type": "function"
+    "name": "Unpaused",
+    "type": "event"
   },
   {
     "inputs": [
@@ -158,79 +143,9 @@
   },
   {
     "inputs": [
-      { "internalType": "uint256", "name": "amount", "type": "uint256" },
-      { "internalType": "uint256", "name": "poolId", "type": "uint256" }
-    ],
-    "name": "deposit",
-    "outputs": [],
-    "stateMutability": "nonpayable",
-    "type": "function"
-  },
-  {
-    "inputs": [
-      { "internalType": "uint256", "name": "poolId", "type": "uint256" },
-      { "internalType": "address[]", "name": "users", "type": "address[]" },
-      { "internalType": "uint256[]", "name": "profits", "type": "uint256[]" },
-      { "internalType": "uint256", "name": "start", "type": "uint256" },
-      { "internalType": "uint256", "name": "end", "type": "uint256" }
-    ],
-    "name": "distributeProfits",
-    "outputs": [],
-    "stateMutability": "nonpayable",
-    "type": "function"
-  },
-  {
-    "inputs": [
-      { "internalType": "uint256", "name": "index", "type": "uint256" }
-    ],
-    "name": "withdraw",
-    "outputs": [],
-    "stateMutability": "nonpayable",
-    "type": "function"
-  },
-  {
-    "inputs": [
       { "internalType": "address", "name": "pool", "type": "address" }
     ],
     "name": "removeApprovedPool",
-    "outputs": [],
-    "stateMutability": "nonpayable",
-    "type": "function"
-  },
-  {
-    "inputs": [
-      { "internalType": "uint256", "name": "poolId", "type": "uint256" },
-      { "internalType": "address", "name": "to", "type": "address" },
-      { "internalType": "uint256", "name": "amount", "type": "uint256" }
-    ],
-    "name": "moveToInvestment",
-    "outputs": [],
-    "stateMutability": "nonpayable",
-    "type": "function"
-  },
-  {
-    "inputs": [
-      { "internalType": "address", "name": "m", "type": "address" }
-    ],
-    "name": "setMembership",
-    "outputs": [],
-    "stateMutability": "nonpayable",
-    "type": "function"
-  },
-  {
-    "inputs": [
-      { "internalType": "address", "name": "t", "type": "address" }
-    ],
-    "name": "setTreasury",
-    "outputs": [],
-    "stateMutability": "nonpayable",
-    "type": "function"
-  },
-  {
-    "inputs": [
-      { "internalType": "bool", "name": "enable", "type": "bool" }
-    ],
-    "name": "toggleEmergencyUnlock",
     "outputs": [],
     "stateMutability": "nonpayable",
     "type": "function"
@@ -258,52 +173,67 @@
   },
   {
     "inputs": [
-      { "internalType": "address", "name": "to", "type": "address" },
-      { "internalType": "uint256", "name": "tokenId", "type": "uint256" }
+      { "internalType": "uint256", "name": "amount", "type": "uint256" },
+      { "internalType": "uint256", "name": "poolId", "type": "uint256" }
     ],
-    "name": "approve",
+    "name": "deposit",
     "outputs": [],
     "stateMutability": "nonpayable",
     "type": "function"
   },
   {
     "inputs": [
-      { "internalType": "address", "name": "to", "type": "address" },
-      { "internalType": "uint256", "name": "tokenId", "type": "uint256" }
+      { "internalType": "uint256", "name": "index", "type": "uint256" }
     ],
-    "name": "safeTransferFrom",
+    "name": "withdraw",
     "outputs": [],
     "stateMutability": "nonpayable",
     "type": "function"
   },
   {
     "inputs": [
-      { "internalType": "address", "name": "from", "type": "address" },
+      { "internalType": "uint256", "name": "poolId", "type": "uint256" },
       { "internalType": "address", "name": "to", "type": "address" },
-      { "internalType": "uint256", "name": "tokenId", "type": "uint256" }
+      { "internalType": "uint256", "name": "amount", "type": "uint256" }
     ],
-    "name": "safeTransferFrom",
+    "name": "moveToInvestment",
     "outputs": [],
     "stateMutability": "nonpayable",
     "type": "function"
   },
   {
     "inputs": [
-      { "internalType": "address", "name": "operator", "type": "address" },
-      { "internalType": "bool", "name": "approved", "type": "bool" }
+      { "internalType": "uint256", "name": "poolId", "type": "uint256" },
+      { "internalType": "uint256", "name": "amount", "type": "uint256" }
     ],
-    "name": "setApprovalForAll",
+    "name": "returnFromInvestment",
     "outputs": [],
     "stateMutability": "nonpayable",
     "type": "function"
   },
   {
     "inputs": [
-      { "internalType": "address", "name": "from", "type": "address" },
-      { "internalType": "address", "name": "to", "type": "address" },
-      { "internalType": "uint256", "name": "tokenId", "type": "uint256" }
+      { "internalType": "address", "name": "m", "type": "address" }
     ],
-    "name": "transferFrom",
+    "name": "setMembership",
+    "outputs": [],
+    "stateMutability": "nonpayable",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      { "internalType": "address", "name": "t", "type": "address" }
+    ],
+    "name": "setTreasury",
+    "outputs": [],
+    "stateMutability": "nonpayable",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      { "internalType": "bool", "name": "enable", "type": "bool" }
+    ],
+    "name": "toggleEmergencyUnlock",
     "outputs": [],
     "stateMutability": "nonpayable",
     "type": "function"
@@ -343,18 +273,6 @@
       { "internalType": "address", "name": "", "type": "address" }
     ],
     "name": "approvedInvestmentPools",
-    "outputs": [
-      { "internalType": "bool", "name": "", "type": "bool" }
-    ],
-    "stateMutability": "view",
-    "type": "function"
-  },
-  {
-    "inputs": [
-      { "internalType": "address", "name": "owner", "type": "address" },
-      { "internalType": "address", "name": "operator", "type": "address" }
-    ],
-    "name": "isApprovedForAll",
     "outputs": [
       { "internalType": "bool", "name": "", "type": "bool" }
     ],
@@ -443,6 +361,15 @@
     "type": "function"
   },
   {
+    "inputs": [],
+    "name": "usdt",
+    "outputs": [
+      { "internalType": "contract IERC20", "name": "", "type": "address" }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
     "inputs": [
       { "internalType": "address", "name": "", "type": "address" }
     ],
@@ -507,10 +434,19 @@
     "type": "function"
   },
   {
-    "inputs": [
-      { "internalType": "address", "name": "owner", "type": "address" }
+    "inputs": [],
+    "name": "getAllUsers",
+    "outputs": [
+      { "internalType": "address[]", "name": "", "type": "address[]" }
     ],
-    "name": "balanceOf",
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      { "internalType": "uint256", "name": "poolId", "type": "uint256" }
+    ],
+    "name": "getPoolTVL",
     "outputs": [
       { "internalType": "uint256", "name": "", "type": "uint256" }
     ],
@@ -518,43 +454,10 @@
     "type": "function"
   },
   {
-    "inputs": [
-      { "internalType": "uint256", "name": "tokenId", "type": "uint256" }
-    ],
-    "name": "getApproved",
-    "outputs": [
-      { "internalType": "address", "name": "", "type": "address" }
-    ],
-    "stateMutability": "view",
-    "type": "function"
-  },
-  {
-    "inputs": [
-      { "internalType": "uint256", "name": "tokenId", "type": "uint256" }
-    ],
-    "name": "ownerOf",
-    "outputs": [
-      { "internalType": "address", "name": "", "type": "address" }
-    ],
-    "stateMutability": "view",
-    "type": "function"
-  },
-  {
-    "inputs": [
-      { "internalType": "bytes4", "name": "interfaceId", "type": "bytes4" }
-    ],
-    "name": "supportsInterface",
-    "outputs": [
-      { "internalType": "bool", "name": "", "type": "bool" }
-    ],
-    "stateMutability": "view",
-    "type": "function"
-  },
-  {
     "inputs": [],
-    "name": "usdt",
+    "name": "getAllTVLs",
     "outputs": [
-      { "internalType": "contract IERC20", "name": "", "type": "address" }
+      { "internalType": "uint256[]", "name": "", "type": "uint256[]" }
     ],
     "stateMutability": "view",
     "type": "function"

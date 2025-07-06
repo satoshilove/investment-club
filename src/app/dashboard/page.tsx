@@ -1,4 +1,3 @@
-// Full updated Dashboard.tsx with active + inactive pools split and withdraw allowed for inactive
 "use client";
 
 import { useEffect, useState } from "react";
@@ -41,9 +40,9 @@ export default function Dashboard() {
   const [inactivePools, setInactivePools] = useState<any[]>([]);
   const [userDeposits, setUserDeposits] = useState<{ [poolId: number]: string }>({});
   const [depositAmounts, setDepositAmounts] = useState<{ [poolId: number]: string }>({});
+  const [userDepositStructsRaw, setUserDepositStructsRaw] = useState<any[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [now, setNow] = useState(Math.floor(Date.now() / 1000));
-  const [userDepositStructsRaw, setUserDepositStructsRaw] = useState<any[]>([]);
 
   const { writeContractAsync: write } = useWriteContract();
 
@@ -65,6 +64,13 @@ export default function Dashboard() {
     address: MEMBERSHIP,
     functionName: "isMember",
     args: [address],
+    query: { enabled: !!address },
+  });
+
+  const { data: emergencyUnlock } = useReadContract({
+    abi: vaultAbi,
+    address: VAULT,
+    functionName: "emergencyUnlock",
     query: { enabled: !!address },
   });
 
@@ -93,7 +99,7 @@ export default function Dashboard() {
     address: VAULT,
     functionName: "getUserDeposits",
     args: [address],
-    query: { enabled: !!address && isConnected },
+    query: { enabled: !!address },
   });
 
   useEffect(() => {
@@ -177,7 +183,7 @@ export default function Dashboard() {
     if (index === -1) return alert("No deposit found");
     const d = userDepositStructsRaw[index];
     if (BigInt(d.amount) === 0n) return alert("Nothing to withdraw");
-    if (!d.unlockTime || Number(d.unlockTime) > now) return alert("Still locked");
+    if (!emergencyUnlock && Number(d.unlockTime) > now) return alert("Still locked");
     const txHash = await write({ abi: vaultAbi, address: VAULT, functionName: "withdraw", args: [BigInt(index)] });
     const receipt = await publicClient?.waitForTransactionReceipt({ hash: txHash });
     if (!receipt || receipt.status?.toString() !== "success") throw new Error("Withdraw failed");
@@ -194,16 +200,17 @@ export default function Dashboard() {
     const tvl = BigInt(totalDeposited) - BigInt(totalWithdrawn);
     const userDeposit = userDeposits[poolId];
     const unlockInfo = userDepositStructsRaw.find((d: any) => Number(d.poolId) === poolId);
-    const unlockString = unlockInfo ? formatUnlockTime(Number(unlockInfo.unlockTime)) : "N/A";
-    const canWithdraw = unlockString === "✅ Unlocked" && !!userDeposit;
+    const unlockTime = unlockInfo ? Number(unlockInfo.unlockTime) : 0;
+    const isUnlocked = unlockTime <= now;
+    const canWithdraw = !!userDeposit && (isUnlocked || emergencyUnlock);
 
     return (
       <div key={poolId} className="bg-[#121212] p-6 rounded-xl border border-gray-800">
         <h3 className="text-xl font-semibold mb-2">{name}</h3>
-        <p className="text-sm text-gray-400 mb-1">APY: {Number(feePercent)}% · Lock: {Number(lockDuration) / 86400} days</p>
+        <p className="text-sm text-gray-400 mb-1">FEES: {Number(feePercent)}% · Lock: {Number(lockDuration) / 86400} days</p>
         <p className="text-sm text-gray-400 mb-1">TVL: {formatUnits(tvl < 0n ? 0n : tvl, USDT_DECIMALS)} USDT</p>
         <p className="text-sm text-gray-400 mb-1">Your Deposit: {userDeposit || "0"} USDT</p>
-        <p className="text-sm text-yellow-400 mb-2">Unlocks: {unlockString}</p>
+        <p className="text-sm text-yellow-400 mb-2">Unlocks: {unlockInfo ? formatUnlockTime(unlockTime) : "N/A"}</p>
         {allowDeposit && (
           <div className="flex items-center gap-2 mb-2">
             <input

@@ -11,6 +11,9 @@ import {
   useWriteContract,
   useWaitForTransactionReceipt,
 } from "wagmi";
+import { getChains, switchChain, getChainId } from "@wagmi/core";
+import { config } from "@/providers/wagmi-provider";
+import { bsc, bscTestnet } from "wagmi/chains";
 import { parseUnits } from "viem";
 import logo from "@/assets/logo_paragon_circle.png";
 import { Button } from "@/components/ui/button";
@@ -24,6 +27,60 @@ const USDT_ADDRESS = process.env.NEXT_PUBLIC_USDT_ADDRESS as `0x${string}`;
 const MEMBERSHIP_FEE = parseUnits("230", 18); // 230 USDT
 
 const CHART_IDS = ["bitcoin", "ethereum", "binancecoin", "tether", "solana", "ripple"];
+
+
+function NetworkSwitcher() {
+  const [chainId, setChainId] = useState<number | null>(null);
+  const chains = getChains(config); // ⬅ Pass the config parameter
+
+  useEffect(() => {
+    const updateChainId = async () => {
+      try {
+        const id = await getChainId(config); // ⬅ Pass config here too
+        setChainId(id);
+      } catch {
+        setChainId(null);
+      }
+    };
+
+    updateChainId();
+    const interval = setInterval(updateChainId, 2000);
+    return () => clearInterval(interval);
+  }, []);
+
+  const handleSwitch = async (id: 56 | 97) => {
+    try {
+      await switchChain(config, { chainId: id }); // ⬅ Now id is already the correct type
+    } catch (err) {
+      console.error("Switch failed", err);
+    }
+  };
+
+  const activeChain = chains.find((c) => c.id === chainId);
+  if (!chainId || !activeChain) return null;
+
+  return (
+    <div className="mt-2 text-xs text-gray-400">
+      <p>
+        Network: <span className="text-white font-medium">{activeChain.name}</span>
+      </p>
+      <div className="flex gap-2 mt-1 justify-end">
+        {chainId !== bsc.id && (
+          <Button onClick={() => handleSwitch(bsc.id)} variant="outline" className="text-xs py-1 px-3">
+            Switch to BSC Mainnet
+          </Button>
+        )}
+        {chainId !== bscTestnet.id && (
+          <Button onClick={() => handleSwitch(bscTestnet.id)} variant="outline" className="text-xs py-1 px-3">
+            Switch to Testnet
+          </Button>
+        )}
+      </div>
+    </div>
+  );
+}
+
+
 
 export default function Home() {
   const { address, isConnected } = useAccount();
@@ -171,7 +228,7 @@ export default function Home() {
   useEffect(() => {
     async function fetchPools() {
       try {
-        const res = await fetch("/api/readPools");
+        const res = await fetch("/api/pools");
         const json = await res.json();
         const activePools = json.filter((p: any) => p.active);
         setLivePools(activePools);
@@ -184,7 +241,7 @@ export default function Home() {
 
   return (
     <main className="min-h-screen bg-[#0e0e0e] text-white">
-      <div className="absolute top-6 right-6">
+      <div className="absolute top-6 right-6 text-right">
         {isConnected ? (
           <Button onClick={() => disconnect()} variant="outline" className="text-white border-white">
             {`${address?.slice(0, 6)}...${address?.slice(-4)}`} (Disconnect)
@@ -195,7 +252,7 @@ export default function Home() {
               Connect Wallet
             </Button>
             {showWallets && (
-              <div className="absolute right-0 mt-2 bg-black border border-gray-700 rounded-md shadow-lg z-50">
+               <div className="absolute right-0 mt-2 bg-black border border-gray-700 rounded-md shadow-lg z-50">
                 {connectors.map((connector, i) => (
                   <button
                     key={connector.id}
@@ -209,6 +266,9 @@ export default function Home() {
             )}
           </div>
         )}
+
+        {/* NETWORK INFO AND SWITCH */}
+        <NetworkSwitcher />
       </div>
 
       {/* Hero Section */}
@@ -306,7 +366,7 @@ export default function Home() {
               <div key={i} className="border border-gray-700 p-6 rounded-xl">
                 <h3 className="text-lg font-bold mb-2">{pool.name}</h3>
                 <p>
-                  {pool.fee}% · {Math.floor(pool.duration / 86400)} day lock
+                  {pool.fee}% Fees· {Math.floor(pool.duration / 86400)} day lock
                 </p>
               </div>
             ))
